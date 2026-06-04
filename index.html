@@ -1,0 +1,372 @@
+import { useState, useEffect } from "react";
+
+const KATEGORI_CONFIG = {
+  "Identifikasi Isu":   { color: "#3B82F6", bg: "#EFF6FF" },
+  "Penetapan Isu":      { color: "#8B5CF6", bg: "#F5F3FF" },
+  "Gagasan Kreatif":    { color: "#10B981", bg: "#ECFDF5" },
+  "Rencana Kegiatan":   { color: "#F59E0B", bg: "#FFFBEB" },
+  "Jadwal Kegiatan":    { color: "#06B6D4", bg: "#ECFEFF" },
+  "Stakeholder":        { color: "#EC4899", bg: "#FDF2F8" },
+  "Bukti Fisik":        { color: "#EF4444", bg: "#FEF2F2" },
+};
+
+const today = new Date().toISOString().split("T")[0];
+
+export default function App() {
+  const [mode, setMode] = useState("narasumber");
+  const [tab, setTab] = useState("dashboard");
+  const [tasks, setTasks] = useState([]);
+  const [responses, setResponses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [namaPeserta, setNamaPeserta] = useState("");
+  const [taskForm, setTaskForm] = useState({ judul:"", deskripsi:"", kategori:"Identifikasi Isu", deadline:"" });
+  const [editingResponse, setEditingResponse] = useState({ taskId: null, jawaban: "" });
+
+  useEffect(() => { loadData(); }, []);
+
+  const loadData = async () => {
+    try {
+      const t = await window.storage.get("ra2_tasks");
+      const r = await window.storage.get("ra2_responses");
+      if (t) setTasks(JSON.parse(t.value));
+      if (r) setResponses(JSON.parse(r.value));
+    } catch {}
+    setLoading(false);
+  };
+
+  const saveTasks = async (v) => { setTasks(v); try { await window.storage.set("ra2_tasks", JSON.stringify(v)); } catch {} };
+  const saveResponses = async (v) => { setResponses(v); try { await window.storage.set("ra2_responses", JSON.stringify(v)); } catch {} };
+
+  const addTask = async () => {
+    if (!taskForm.judul.trim() || !taskForm.deadline) return;
+    await saveTasks([...tasks, { id: Date.now().toString(), ...taskForm, createdAt: new Date().toISOString(), status: "aktif" }]);
+    setTaskForm({ judul:"", deskripsi:"", kategori:"Identifikasi Isu", deadline:"" });
+  };
+
+  const deleteTask = async (id) => {
+    await saveTasks(tasks.filter(t => t.id !== id));
+    await saveResponses(responses.filter(r => r.taskId !== id));
+  };
+
+  const toggleTask = async (id) => {
+    await saveTasks(tasks.map(t => t.id === id ? { ...t, status: t.status === "aktif" ? "selesai" : "aktif" } : t));
+  };
+
+  const submitResponse = async (taskId) => {
+    if (!namaPeserta.trim() || !editingResponse.jawaban.trim()) return;
+    const existing = responses.find(r => r.taskId === taskId && r.namaPeserta === namaPeserta);
+    let updated;
+    if (existing) {
+      updated = responses.map(r => r.id === existing.id ? { ...r, jawaban: editingResponse.jawaban, submittedAt: new Date().toISOString() } : r);
+    } else {
+      updated = [...responses, { id: Date.now().toString(), taskId, namaPeserta, jawaban: editingResponse.jawaban, submittedAt: new Date().toISOString() }];
+    }
+    await saveResponses(updated);
+    setEditingResponse({ taskId: null, jawaban: "" });
+  };
+
+  const myResponse = (tid) => responses.find(r => r.taskId === tid && r.namaPeserta === namaPeserta);
+  const isOverdue = (d) => d < today;
+  const tasksByDate = tasks.reduce((a, t) => { (a[t.deadline] = a[t.deadline] || []).push(t); return a; }, {});
+
+  // Stats
+  const pending = tasks.filter(t => t.status === "aktif").length;
+  const done = tasks.filter(t => t.status === "selesai").length;
+  const uniquePeserta = [...new Set(responses.map(r => r.namaPeserta))];
+
+  const s = {
+    root: { fontFamily:"'Segoe UI',sans-serif", background:"#F1F5F9", minHeight:"100vh", color:"#1E293B" },
+    hdr: { background:"linear-gradient(135deg,#1D4ED8,#3B82F6)", color:"#fff", padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"10px" },
+    modeWrap: { display:"flex", background:"rgba(255,255,255,0.18)", borderRadius:"8px", padding:"3px" },
+    mBtn: (a) => ({ padding:"7px 14px", border:"none", borderRadius:"6px", cursor:"pointer", fontWeight:"700", fontSize:"12px", background: a?"white":"transparent", color: a?"#1D4ED8":"white" }),
+    tabs: { display:"flex", background:"white", borderBottom:"2px solid #E2E8F0", padding:"0 18px", gap:"2px", overflowX:"auto" },
+    tab: (a) => ({ padding:"11px 15px", border:"none", background:"transparent", borderBottom: a?"2px solid #3B82F6":"2px solid transparent", color: a?"#3B82F6":"#64748B", fontWeight: a?"700":"400", cursor:"pointer", fontSize:"13px", marginBottom:"-2px", whiteSpace:"nowrap" }),
+    body: { padding:"16px 18px" },
+    card: { background:"white", borderRadius:"12px", padding:"16px", boxShadow:"0 1px 4px rgba(0,0,0,0.08)", marginBottom:"12px" },
+    inp: { width:"100%", padding:"9px 12px", border:"1px solid #E2E8F0", borderRadius:"8px", fontSize:"13px", outline:"none", boxSizing:"border-box", fontFamily:"inherit" },
+    btn: (c="#3B82F6") => ({ padding:"9px 18px", background:c, color:"#fff", border:"none", borderRadius:"8px", cursor:"pointer", fontWeight:"700", fontSize:"12px" }),
+    badge: (k) => ({ display:"inline-block", padding:"2px 9px", borderRadius:"20px", fontSize:"11px", fontWeight:"700", background: KATEGORI_CONFIG[k]?.bg||"#F1F5F9", color: KATEGORI_CONFIG[k]?.color||"#64748B", border:`1px solid ${KATEGORI_CONFIG[k]?.color||"#CBD5E1"}33` }),
+    stat: (c) => ({ background:"white", borderRadius:"12px", padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.08)", borderLeft:`4px solid ${c}`, flex:"1", minWidth:"100px" }),
+    tCard: (s) => ({ background:"white", borderRadius:"12px", padding:"14px 16px", boxShadow:"0 1px 4px rgba(0,0,0,0.08)", marginBottom:"10px", borderLeft:`4px solid ${s==="selesai"?"#10B981":"#3B82F6"}`, opacity: s==="selesai"?0.7:1 }),
+  };
+
+  if (loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",fontFamily:"sans-serif",color:"#64748B"}}>Memuat data...</div>;
+
+  return (
+    <div style={s.root}>
+      {/* HEADER */}
+      <div style={s.hdr}>
+        <div>
+          <div style={{fontWeight:"800",fontSize:"15px"}}>📋 Task Tracker Rancangan Aktualisasi</div>
+          <div style={{fontSize:"11px",opacity:0.85}}>{new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+        </div>
+        <div style={s.modeWrap}>
+          <button style={s.mBtn(mode==="narasumber")} onClick={()=>{setMode("narasumber");setTab("dashboard")}}>🎓 Narasumber</button>
+          <button style={s.mBtn(mode==="peserta")} onClick={()=>{setMode("peserta");setTab("tugas")}}>👤 Peserta</button>
+        </div>
+      </div>
+
+      {/* TABS */}
+      <div style={s.tabs}>
+        {mode==="narasumber" ? (
+          ["dashboard","tugas","jadwal","jawaban"].map(t => (
+            <button key={t} style={s.tab(tab===t)} onClick={()=>setTab(t)}>
+              {t==="dashboard"?"📊 Dashboard":t==="tugas"?"📋 Kelola Tugas":t==="jadwal"?"📅 Jadwal":"📝 Jawaban Peserta"}
+            </button>
+          ))
+        ) : (
+          ["tugas","jadwal"].map(t => (
+            <button key={t} style={s.tab(tab===t)} onClick={()=>setTab(t)}>
+              {t==="tugas"?"📋 Tugas Saya":"📅 Jadwal Harian"}
+            </button>
+          ))
+        )}
+      </div>
+
+      <div style={s.body}>
+
+        {/* ── NARASUMBER: DASHBOARD ── */}
+        {mode==="narasumber" && tab==="dashboard" && (
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:"10px",marginBottom:"14px"}}>
+              {[[tasks.length,"Total Tugas","#3B82F6"],[pending,"Aktif","#F59E0B"],[done,"Selesai","#10B981"],[uniquePeserta.length,"Peserta","#8B5CF6"]].map(([v,l,c])=>(
+                <div key={l} style={s.stat(c)}>
+                  <div style={{fontSize:"26px",fontWeight:"800",color:c}}>{v}</div>
+                  <div style={{fontSize:"11px",color:"#64748B"}}>{l}</div>
+                </div>
+              ))}
+            </div>
+            <div style={s.card}>
+              <div style={{fontWeight:"700",marginBottom:"12px",fontSize:"13px"}}>📊 Distribusi Kategori</div>
+              {Object.keys(KATEGORI_CONFIG).map(k => {
+                const c = tasks.filter(t=>t.kategori===k).length;
+                if (!c) return null;
+                return (
+                  <div key={k} style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"7px"}}>
+                    <span style={{...s.badge(k),minWidth:"130px",textAlign:"center"}}>{k}</span>
+                    <div style={{flex:1,background:"#F1F5F9",borderRadius:"4px",height:"7px"}}>
+                      <div style={{width:`${(c/tasks.length)*100}%`,background:KATEGORI_CONFIG[k].color,height:"7px",borderRadius:"4px"}}/>
+                    </div>
+                    <span style={{fontSize:"12px",color:"#64748B",minWidth:"16px"}}>{c}</span>
+                  </div>
+                );
+              })}
+              {!tasks.length && <div style={{color:"#94A3B8",fontSize:"12px"}}>Belum ada tugas</div>}
+            </div>
+            <div style={s.card}>
+              <div style={{fontWeight:"700",marginBottom:"12px",fontSize:"13px"}}>📝 Jawaban Terbaru</div>
+              {!responses.length ? <div style={{color:"#94A3B8",fontSize:"12px"}}>Belum ada jawaban masuk</div> :
+                [...responses].sort((a,b)=>new Date(b.submittedAt)-new Date(a.submittedAt)).slice(0,5).map(r=>{
+                  const task = tasks.find(t=>t.id===r.taskId);
+                  return (
+                    <div key={r.id} style={{padding:"9px 0",borderBottom:"1px solid #F1F5F9",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{fontWeight:"700",fontSize:"13px"}}>👤 {r.namaPeserta}</div>
+                        <div style={{fontSize:"12px",color:"#64748B"}}>{task?.judul||"Tugas dihapus"}</div>
+                      </div>
+                      <span style={{fontSize:"11px",color:"#94A3B8"}}>{new Date(r.submittedAt).toLocaleDateString("id-ID")}</span>
+                    </div>
+                  );
+                })
+              }
+            </div>
+          </>
+        )}
+
+        {/* ── NARASUMBER: KELOLA TUGAS ── */}
+        {mode==="narasumber" && tab==="tugas" && (
+          <>
+            <div style={s.card}>
+              <div style={{fontWeight:"700",marginBottom:"12px",fontSize:"13px"}}>➕ Tambah Tugas Baru</div>
+              <div style={{display:"grid",gap:"9px"}}>
+                <input style={s.inp} placeholder="Judul Tugas *" value={taskForm.judul} onChange={e=>setTaskForm({...taskForm,judul:e.target.value})} />
+                <textarea style={{...s.inp,minHeight:"70px",resize:"vertical"}} placeholder="Deskripsi / instruksi tugas..." value={taskForm.deskripsi} onChange={e=>setTaskForm({...taskForm,deskripsi:e.target.value})} />
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"9px"}}>
+                  <div>
+                    <div style={{fontSize:"11px",color:"#64748B",marginBottom:"4px"}}>Kategori</div>
+                    <select style={s.inp} value={taskForm.kategori} onChange={e=>setTaskForm({...taskForm,kategori:e.target.value})}>
+                      {Object.keys(KATEGORI_CONFIG).map(k=><option key={k}>{k}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{fontSize:"11px",color:"#64748B",marginBottom:"4px"}}>Deadline *</div>
+                    <input style={s.inp} type="date" value={taskForm.deadline} onChange={e=>setTaskForm({...taskForm,deadline:e.target.value})} />
+                  </div>
+                </div>
+                <button style={s.btn()} onClick={addTask}>Tambah Tugas</button>
+              </div>
+            </div>
+
+            <div style={{fontWeight:"700",fontSize:"13px",marginBottom:"10px"}}>📋 Semua Tugas ({tasks.length})</div>
+            {!tasks.length && <div style={{...s.card,color:"#94A3B8",textAlign:"center",padding:"28px",fontSize:"13px"}}>Belum ada tugas. Tambahkan di atas.</div>}
+            {tasks.map(t=>(
+              <div key={t.id} style={s.tCard(t.status)}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"7px",flexWrap:"wrap",marginBottom:"4px"}}>
+                      <span style={{fontWeight:"700",fontSize:"13px",textDecoration:t.status==="selesai"?"line-through":"none"}}>{t.judul}</span>
+                      <span style={s.badge(t.kategori)}>{t.kategori}</span>
+                      {t.status==="selesai"&&<span style={{...s.badge("Gagasan Kreatif"),background:"#ECFDF5",color:"#10B981",border:"1px solid #10B98133"}}>✓ Selesai</span>}
+                    </div>
+                    {t.deskripsi&&<div style={{fontSize:"12px",color:"#64748B",marginBottom:"5px"}}>{t.deskripsi}</div>}
+                    <div style={{display:"flex",gap:"12px",flexWrap:"wrap"}}>
+                      <span style={{fontSize:"11px",color:isOverdue(t.deadline)&&t.status!=="selesai"?"#EF4444":"#64748B"}}>
+                        📅 {new Date(t.deadline+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}
+                        {isOverdue(t.deadline)&&t.status!=="selesai"&&" ⚠️"}
+                      </span>
+                      <span style={{fontSize:"11px",color:"#8B5CF6"}}>💬 {responses.filter(r=>r.taskId===t.id).length} jawaban</span>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:"6px",flexShrink:0}}>
+                    <button style={{...s.btn(t.status==="aktif"?"#10B981":"#F59E0B"),padding:"6px 10px",fontSize:"12px"}} onClick={()=>toggleTask(t.id)}>{t.status==="aktif"?"✓":"↩"}</button>
+                    <button style={{...s.btn("#EF4444"),padding:"6px 10px",fontSize:"12px"}} onClick={()=>deleteTask(t.id)}>🗑</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* ── JADWAL HARIAN (both modes) ── */}
+        {tab==="jadwal" && (
+          <>
+            <div style={{fontWeight:"700",fontSize:"13px",marginBottom:"12px"}}>📅 Jadwal Harian Rancangan Aktualisasi</div>
+            {!Object.keys(tasksByDate).length
+              ? <div style={{...s.card,color:"#94A3B8",textAlign:"center",padding:"28px",fontSize:"13px"}}>Belum ada tugas terjadwal.</div>
+              : Object.keys(tasksByDate).sort().map(date=>{
+                  const isToday = date===today;
+                  const isPast = date<today;
+                  const borderC = isToday?"#3B82F6":isPast?"#CBD5E1":"#10B981";
+                  return (
+                    <div key={date} style={{...s.card,borderLeft:`4px solid ${borderC}`,background:isToday?"#EFF6FF":"white"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"9px",marginBottom:"10px",flexWrap:"wrap"}}>
+                        <div style={{background:borderC,color:"white",borderRadius:"8px",padding:"4px 12px",fontSize:"12px",fontWeight:"700"}}>
+                          {new Date(date+"T00:00:00").toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+                        </div>
+                        {isToday&&<span style={{fontSize:"11px",background:"#DBEAFE",color:"#1D4ED8",padding:"2px 8px",borderRadius:"20px",fontWeight:"700"}}>HARI INI</span>}
+                        {isPast&&!isToday&&<span style={{fontSize:"11px",color:"#94A3B8"}}>Sudah lewat</span>}
+                      </div>
+                      {tasksByDate[date].map(t=>(
+                        <div key={t.id} style={{display:"flex",alignItems:"flex-start",gap:"9px",padding:"7px 0",borderBottom:"1px solid #F1F5F9"}}>
+                          <div style={{width:"9px",height:"9px",borderRadius:"50%",background:KATEGORI_CONFIG[t.kategori]?.color||"#CBD5E1",marginTop:"4px",flexShrink:0}}/>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:"700",fontSize:"13px",textDecoration:t.status==="selesai"?"line-through":"none"}}>{t.judul}</div>
+                            <div style={{display:"flex",gap:"7px",marginTop:"3px",flexWrap:"wrap"}}>
+                              <span style={s.badge(t.kategori)}>{t.kategori}</span>
+                              {mode==="narasumber"&&<span style={{fontSize:"11px",color:"#8B5CF6"}}>💬 {responses.filter(r=>r.taskId===t.id).length} jawaban</span>}
+                              {mode==="peserta"&&namaPeserta&&(
+                                <span style={{fontSize:"11px",color:myResponse(t.id)?"#10B981":"#F59E0B"}}>{myResponse(t.id)?"✓ Sudah dijawab":"⏳ Belum dijawab"}</span>
+                              )}
+                            </div>
+                          </div>
+                          {t.status==="selesai"&&<span style={{fontSize:"11px",color:"#10B981",fontWeight:"700"}}>✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })
+            }
+          </>
+        )}
+
+        {/* ── NARASUMBER: JAWABAN PESERTA ── */}
+        {mode==="narasumber" && tab==="jawaban" && (
+          <>
+            <div style={{fontWeight:"700",fontSize:"13px",marginBottom:"12px"}}>📝 Jawaban Peserta per Tugas</div>
+            {!tasks.length
+              ? <div style={{...s.card,color:"#94A3B8",textAlign:"center",padding:"28px",fontSize:"13px"}}>Belum ada tugas.</div>
+              : tasks.map(t=>{
+                  const tRes = responses.filter(r=>r.taskId===t.id);
+                  return (
+                    <div key={t.id} style={s.card}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"8px",marginBottom:"10px"}}>
+                        <div>
+                          <div style={{fontWeight:"700",fontSize:"13px"}}>{t.judul}</div>
+                          <div style={{display:"flex",gap:"7px",marginTop:"4px",flexWrap:"wrap"}}>
+                            <span style={s.badge(t.kategori)}>{t.kategori}</span>
+                            <span style={{fontSize:"11px",color:"#8B5CF6"}}>💬 {tRes.length} jawaban</span>
+                          </div>
+                        </div>
+                        <span style={{fontSize:"11px",color:"#64748B"}}>📅 {new Date(t.deadline+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span>
+                      </div>
+                      {!tRes.length
+                        ? <div style={{color:"#94A3B8",fontSize:"12px"}}>Belum ada jawaban masuk.</div>
+                        : tRes.map(r=>(
+                          <div key={r.id} style={{background:"#F8FAFC",borderRadius:"8px",padding:"10px",marginBottom:"7px"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:"5px"}}>
+                              <span style={{fontWeight:"700",fontSize:"12px"}}>👤 {r.namaPeserta}</span>
+                              <span style={{fontSize:"11px",color:"#94A3B8"}}>{new Date(r.submittedAt).toLocaleString("id-ID")}</span>
+                            </div>
+                            <div style={{fontSize:"13px",color:"#334155",lineHeight:"1.5"}}>{r.jawaban}</div>
+                          </div>
+                        ))
+                      }
+                    </div>
+                  );
+                })
+            }
+          </>
+        )}
+
+        {/* ── PESERTA: TUGAS SAYA ── */}
+        {mode==="peserta" && tab==="tugas" && (
+          <>
+            <div style={s.card}>
+              <div style={{fontWeight:"700",marginBottom:"9px",fontSize:"13px"}}>👤 Identitas Peserta</div>
+              <input style={s.inp} placeholder="Masukkan nama Anda..." value={namaPeserta} onChange={e=>setNamaPeserta(e.target.value)} />
+              {namaPeserta&&<div style={{marginTop:"7px",fontSize:"12px",color:"#10B981",fontWeight:"700"}}>✓ Halo, {namaPeserta}!</div>}
+            </div>
+            {!namaPeserta
+              ? <div style={{...s.card,color:"#94A3B8",textAlign:"center",padding:"28px",fontSize:"13px"}}>Masukkan nama Anda untuk melihat tugas.</div>
+              : !tasks.filter(t=>t.status==="aktif").length
+                ? <div style={{...s.card,color:"#94A3B8",textAlign:"center",padding:"28px",fontSize:"13px"}}>Belum ada tugas aktif dari narasumber.</div>
+                : tasks.filter(t=>t.status==="aktif").map(t=>{
+                    const res = myResponse(t.id);
+                    const isEditing = editingResponse.taskId===t.id;
+                    return (
+                      <div key={t.id} style={{...s.tCard("aktif"),borderLeft:`4px solid ${res?"#10B981":"#3B82F6"}`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px",marginBottom:"8px",flexWrap:"wrap"}}>
+                          <div>
+                            <div style={{fontWeight:"700",fontSize:"13px",marginBottom:"4px"}}>{t.judul}</div>
+                            {t.deskripsi&&<div style={{fontSize:"12px",color:"#64748B",marginBottom:"5px"}}>{t.deskripsi}</div>}
+                            <div style={{display:"flex",gap:"7px",flexWrap:"wrap"}}>
+                              <span style={s.badge(t.kategori)}>{t.kategori}</span>
+                              <span style={{fontSize:"11px",color:isOverdue(t.deadline)?"#EF4444":"#64748B"}}>
+                                📅 {new Date(t.deadline+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}
+                              </span>
+                            </div>
+                          </div>
+                          <span style={{fontSize:"11px",fontWeight:"700",padding:"4px 10px",borderRadius:"20px",background:res?"#ECFDF5":"#FEF3C7",color:res?"#10B981":"#D97706",flexShrink:0}}>
+                            {res?"✓ Selesai":"⏳ Pending"}
+                          </span>
+                        </div>
+                        {res&&!isEditing&&(
+                          <div style={{background:"#F0FDF4",borderRadius:"8px",padding:"10px",marginBottom:"8px"}}>
+                            <div style={{fontSize:"11px",color:"#64748B",marginBottom:"4px"}}>Jawaban saya:</div>
+                            <div style={{fontSize:"13px",color:"#1E293B"}}>{res.jawaban}</div>
+                          </div>
+                        )}
+                        {isEditing ? (
+                          <div style={{display:"grid",gap:"7px"}}>
+                            <textarea style={{...s.inp,minHeight:"90px",resize:"vertical"}} placeholder="Tuliskan jawaban / progress Anda..." value={editingResponse.jawaban} onChange={e=>setEditingResponse({...editingResponse,jawaban:e.target.value})} />
+                            <div style={{display:"flex",gap:"7px"}}>
+                              <button style={s.btn()} onClick={()=>submitResponse(t.id)}>Kirim Jawaban</button>
+                              <button style={s.btn("#64748B")} onClick={()=>setEditingResponse({taskId:null,jawaban:""})}>Batal</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button style={s.btn(res?"#64748B":"#3B82F6")} onClick={()=>setEditingResponse({taskId:t.id,jawaban:res?.jawaban||""})}>
+                            {res?"✏️ Edit Jawaban":"✍️ Isi Jawaban"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+            }
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+}
